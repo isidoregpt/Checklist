@@ -622,25 +622,25 @@ def render_checklist_for_person(person):
             st.rerun()
     
     # Completion Email Section - Only show if all tasks are complete
-    is_complete = is_checklist_complete(selected_person)
+    is_complete = is_checklist_complete(person)
     
     if is_complete:
         st.markdown('<div class="completion-email-section">', unsafe_allow_html=True)
         st.markdown("### 🎉 CHECKLIST COMPLETE! 🎉")
-        st.markdown(f"**{selected_person}** has finished all tasks!")
+        st.markdown(f"**{person}** has finished all tasks!")
         
         # Create email content
-        email_subject = f"{selected_person}'s Daily Checklist Complete - {get_today_key()}"
-        email_body = create_email_body(selected_person)
+        email_subject = f"{person}'s Daily Checklist Complete - {get_today_key()}"
+        email_body = create_email_body(person)
         
         # Create download for CSV to attach manually
-        csv_content = generate_log_csv(selected_person)
+        csv_content = generate_log_csv(person)
         
         col1, col2 = st.columns([1, 1])
         
         with col1:
             # Mailto link button
-            mailto_link = create_mailto_link(selected_person, email_subject, email_body)
+            mailto_link = create_mailto_link(person, email_subject, email_body)
             st.markdown(f"""
             <a href="{mailto_link}" target="_blank">
                 <button style="
@@ -667,9 +667,9 @@ def render_checklist_for_person(person):
                 st.download_button(
                     label="📎 Download Log for Attachment",
                     data=csv_content,
-                    file_name=f"{selected_person.lower()}_checklist_complete_{get_today_key()}.csv",
+                    file_name=f"{person.lower()}_checklist_complete_{get_today_key()}.csv",
                     mime="text/csv",
-                    key=f"completion_download_{selected_person}"
+                    key=f"completion_download_{person}"
                 )
                 st.markdown("*Download this to attach to your email*")
             
@@ -683,7 +683,7 @@ def render_checklist_for_person(person):
     
     else:
         # Show grayed out section when incomplete
-        incomplete_count = sum(len(tasks) for tasks in CHECKLIST_ITEMS.values()) - sum(1 for completed in st.session_state[f'checklist_state_{selected_person}']['completed_tasks'].values() if completed)
+        incomplete_count = sum(len(tasks) for tasks in CHECKLIST_ITEMS.values()) - sum(1 for completed in st.session_state[f'checklist_state_{person}']['completed_tasks'].values() if completed)
         
         st.markdown('<div class="completion-email-disabled">', unsafe_allow_html=True)
         st.markdown("### 📧 Completion Email")
