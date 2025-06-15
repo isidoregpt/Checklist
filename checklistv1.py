@@ -76,14 +76,6 @@ st.markdown("""
         border: 1px solid #DEE2E6;
     }
     
-    .notification-section {
-        background: #E3F2FD;
-        padding: 1rem;
-        border-radius: 10px;
-        margin-top: 1rem;
-        border: 1px solid #BBDEFB;
-    }
-    
     .completion-email-section {
         background: linear-gradient(135deg, #E8F5E8 0%, #C8E6C8 100%);
         padding: 1.5rem;
@@ -328,173 +320,8 @@ def is_checklist_complete(person):
                 return False
     
     return True
-    return "notification_config.json"
 
-def load_notification_config():
-    """Load notification configuration"""
-    try:
-        config_file = get_config_file()
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
-                return json.load(f)
-        else:
-            return {
-                'email_enabled': False,
-                'sms_enabled': False,
-                'email_settings': {
-                    'smtp_server': '',
-                    'smtp_port': 587,
-                    'sender_email': '',
-                    'sender_password': '',
-                    'recipient_email': ''
-                },
-                'sms_settings': {
-                    'twilio_account_sid': '',
-                    'twilio_auth_token': '',
-                    'twilio_phone_number': '',
-                    'recipient_phone': ''
-                }
-            }
-    except Exception as e:
-        st.error(f"Error loading notification config: {e}")
-        return {}
-
-def save_notification_config(config):
-    """Save notification configuration"""
-    try:
-        config_file = get_config_file()
-        with open(config_file, 'w') as f:
-            json.dump(config, f, indent=2)
-    except Exception as e:
-        st.error(f"Error saving notification config: {e}")
-
-def send_email_notification(subject, body, attachment_data=None, attachment_filename=None):
-    """Send email notification with optional attachment"""
-    try:
-        config = load_notification_config()
-        if not config.get('email_enabled', False):
-            return False, "Email notifications not enabled"
-        
-        email_settings = config.get('email_settings', {})
-        
-        # Create message
-        msg = MimeMultipart()
-        msg['From'] = email_settings['sender_email']
-        msg['To'] = email_settings['recipient_email']
-        msg['Subject'] = subject
-        
-        # Add body
-        msg.attach(MimeText(body, 'plain'))
-        
-        # Add attachment if provided
-        if attachment_data and attachment_filename:
-            part = MimeBase('application', 'octet-stream')
-            part.set_payload(attachment_data.encode())
-            encoders.encode_base64(part)
-            part.add_header(
-                'Content-Disposition',
-                f'attachment; filename= {attachment_filename}'
-            )
-            msg.attach(part)
-        
-        # Send email
-        server = smtplib.SMTP(email_settings['smtp_server'], email_settings['smtp_port'])
-        server.starttls()
-        server.login(email_settings['sender_email'], email_settings['sender_password'])
-        text = msg.as_string()
-        server.sendmail(email_settings['sender_email'], email_settings['recipient_email'], text)
-        server.quit()
-        
-        return True, "Email sent successfully"
-        
-    except Exception as e:
-        return False, f"Error sending email: {str(e)}"
-
-def send_sms_notification(message):
-    """Send SMS notification using Twilio"""
-    try:
-        config = load_notification_config()
-        if not config.get('sms_enabled', False):
-            return False, "SMS notifications not enabled"
-        
-        sms_settings = config.get('sms_settings', {})
-        
-        # Twilio API endpoint
-        account_sid = sms_settings['twilio_account_sid']
-        auth_token = sms_settings['twilio_auth_token']
-        
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
-        
-        data = {
-            'From': sms_settings['twilio_phone_number'],
-            'To': sms_settings['recipient_phone'],
-            'Body': message
-        }
-        
-        response = requests.post(url, data=data, auth=(account_sid, auth_token))
-        
-        if response.status_code == 201:
-            return True, "SMS sent successfully"
-        else:
-            return False, f"Error sending SMS: {response.text}"
-            
-    except Exception as e:
-        return False, f"Error sending SMS: {str(e)}"
-
-def generate_daily_summary(person):
-    """Generate a daily summary for notifications"""
-    state_key = f'checklist_state_{person}'
-    if state_key not in st.session_state:
-        st.session_state[state_key] = load_checklist_state(person)
-    
-    state = st.session_state[state_key]
-    
-    total_tasks = sum(len(tasks) for tasks in CHECKLIST_ITEMS.values())
-    completed_tasks = sum(1 for completed in state['completed_tasks'].values() if completed)
-    earned_tickets = sum(
-        task['tickets'] for category, tasks in CHECKLIST_ITEMS.items() 
-        for task in tasks if state['completed_tasks'].get(f"{category}_{task['task']}", False)
-    )
-    total_tickets = sum(task['tickets'] for tasks in CHECKLIST_ITEMS.values() for task in tasks)
-    
-    completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
-    
-    summary = f"""
-Daily Checklist Summary for {person}
-Date: {datetime.now().strftime('%A, %B %d, %Y')}
-
-📊 Statistics:
-• Completed Tasks: {completed_tasks}/{total_tasks}
-• Tickets Earned: {earned_tickets}/{total_tickets}
-• Completion Rate: {completion_rate:.1f}%
-
-✅ Completed Tasks:
-"""
-    
-    for category, tasks in CHECKLIST_ITEMS.items():
-        completed_in_category = []
-        for task in tasks:
-            task_key = f"{category}_{task['task']}"
-            if state['completed_tasks'].get(task_key, False):
-                tickets_text = f" ({task['tickets']} tickets)" if task['tickets'] > 0 else ""
-                completed_in_category.append(f"  • {task['task']}{tickets_text}")
-        
-        if completed_in_category:
-            summary += f"\n{category}:\n" + "\n".join(completed_in_category)
-    
-    # Add incomplete tasks
-    incomplete_tasks = []
-    for category, tasks in CHECKLIST_ITEMS.items():
-        for task in tasks:
-            task_key = f"{category}_{task['task']}"
-            if not state['completed_tasks'].get(task_key, False):
-                tickets_text = f" ({task['tickets']} tickets)" if task['tickets'] > 0 else ""
-                incomplete_tasks.append(f"  • {task['task']}{tickets_text}")
-    
-    if incomplete_tasks:
-        summary += f"\n\n❌ Incomplete Tasks:\n" + "\n".join(incomplete_tasks)
-    
-    return summary
+def generate_combined_log_csv():
     """Generate combined CSV for all people"""
     try:
         all_data = []
@@ -594,33 +421,6 @@ def render_checklist_for_person(person):
                     st.markdown(f'<div class="ticket-info">{ticket_text} ({task["tickets"]} tickets)</div>', 
                               unsafe_allow_html=True)
     
-    # Download section for this person
-    st.markdown('<div class="download-section">', unsafe_allow_html=True)
-    st.markdown(f"### 📥 Download {person}'s Log")
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        if st.button(f"📊 Generate {person}'s Log", key=f"download_{person}"):
-            csv_content = generate_log_csv(person)
-            if csv_content != "No log data available" and not csv_content.startswith("Error"):
-                st.download_button(
-                    label=f"Download {person}'s CSV Log",
-                    data=csv_content,
-                    file_name=f"checklist_log_{person.lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv",
-                    key=f"download_btn_{person}"
-                )
-            else:
-                st.warning(csv_content)
-    
-    with col2:
-        if st.button(f"🔄 Reset {person}'s Checklist", key=f"reset_{person}"):
-            st.session_state[state_key] = create_fresh_checklist()
-            save_checklist_state(person, st.session_state[state_key])
-            st.success(f"{person}'s checklist reset successfully!")
-            st.rerun()
-    
     # Completion Email Section - Only show if all tasks are complete
     is_complete = is_checklist_complete(person)
     
@@ -708,6 +508,33 @@ def render_checklist_for_person(person):
         
         st.markdown("*Complete all tasks to unlock the completion email*")
         st.markdown('</div>', unsafe_allow_html=True)
+
+    # Download section for this person
+    st.markdown('<div class="download-section">', unsafe_allow_html=True)
+    st.markdown(f"### 📥 Download {person}'s Log")
+    
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        if st.button(f"📊 Generate {person}'s Log", key=f"download_{person}"):
+            csv_content = generate_log_csv(person)
+            if csv_content != "No log data available" and not csv_content.startswith("Error"):
+                st.download_button(
+                    label=f"Download {person}'s CSV Log",
+                    data=csv_content,
+                    file_name=f"checklist_log_{person.lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    key=f"download_btn_{person}"
+                )
+            else:
+                st.warning(csv_content)
+    
+    with col2:
+        if st.button(f"🔄 Reset {person}'s Checklist", key=f"reset_{person}"):
+            st.session_state[state_key] = create_fresh_checklist()
+            save_checklist_state(person, st.session_state[state_key])
+            st.success(f"{person}'s checklist reset successfully!")
+            st.rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -771,95 +598,9 @@ def main():
             else:
                 st.warning(csv_content)
         
-        # Notification Configuration
-        st.markdown("### ⚙️ Notification Setup")
-        
-        if st.button("🔧 Configure Notifications"):
-            st.session_state.show_config = True
-        
-        if st.session_state.get('show_config', False):
-            with st.expander("📧 Email Settings", expanded=True):
-                config = load_notification_config()
-                
-                email_enabled = st.checkbox("Enable Email Notifications", 
-                                           value=config.get('email_enabled', False))
-                
-                if email_enabled:
-                    smtp_server = st.text_input("SMTP Server (e.g., smtp.gmail.com)", 
-                                              value=config.get('email_settings', {}).get('smtp_server', ''))
-                    smtp_port = st.number_input("SMTP Port", 
-                                              value=config.get('email_settings', {}).get('smtp_port', 587))
-                    sender_email = st.text_input("Sender Email", 
-                                                value=config.get('email_settings', {}).get('sender_email', ''))
-                    sender_password = st.text_input("Sender Password", 
-                                                   type="password",
-                                                   value=config.get('email_settings', {}).get('sender_password', ''))
-                    recipient_email = st.text_input("Recipient Email", 
-                                                   value=config.get('email_settings', {}).get('recipient_email', ''))
-                
-                with st.expander("📱 SMS Settings (Twilio)", expanded=False):
-                    sms_enabled = st.checkbox("Enable SMS Notifications", 
-                                            value=config.get('sms_enabled', False))
-                    
-                    if sms_enabled:
-                        twilio_sid = st.text_input("Twilio Account SID", 
-                                                 value=config.get('sms_settings', {}).get('twilio_account_sid', ''))
-                        twilio_token = st.text_input("Twilio Auth Token", 
-                                                   type="password",
-                                                   value=config.get('sms_settings', {}).get('twilio_auth_token', ''))
-                        twilio_phone = st.text_input("Twilio Phone Number (e.g., +1234567890)", 
-                                                   value=config.get('sms_settings', {}).get('twilio_phone_number', ''))
-                        recipient_phone = st.text_input("Recipient Phone Number (e.g., +1234567890)", 
-                                                       value=config.get('sms_settings', {}).get('recipient_phone', ''))
-                
-                if st.button("💾 Save Notification Settings"):
-                    new_config = {
-                        'email_enabled': email_enabled,
-                        'sms_enabled': sms_enabled,
-                        'email_settings': {
-                            'smtp_server': smtp_server if email_enabled else '',
-                            'smtp_port': smtp_port if email_enabled else 587,
-                            'sender_email': sender_email if email_enabled else '',
-                            'sender_password': sender_password if email_enabled else '',
-                            'recipient_email': recipient_email if email_enabled else ''
-                        },
-                        'sms_settings': {
-                            'twilio_account_sid': twilio_sid if sms_enabled else '',
-                            'twilio_auth_token': twilio_token if sms_enabled else '',
-                            'twilio_phone_number': twilio_phone if sms_enabled else '',
-                            'recipient_phone': recipient_phone if sms_enabled else ''
-                        }
-                    }
-                    save_notification_config(new_config)
-                    st.success("Notification settings saved!")
-                    st.session_state.show_config = False
-                    st.rerun()
-        
-        # Quick notification test
-        config = load_notification_config()
-        if config.get('email_enabled') or config.get('sms_enabled'):
-            st.markdown("### 📤 Send Family Summary")
-            
-            if st.button("📧 Email Family Report"):
-                family_summary = f"Family Checklist Summary - {get_today_key()}\n\n"
-                
-                for person in PEOPLE:
-                    family_summary += f"\n{generate_daily_summary(person)}\n"
-                    family_summary += "-" * 50 + "\n"
-                
-                combined_csv = generate_combined_log_csv()
-                
-                success, message = send_email_notification(
-                    subject=f"Family Daily Checklist Summary - {get_today_key()}",
-                    body=family_summary,
-                    attachment_data=combined_csv if combined_csv != "No log data available" else None,
-                    attachment_filename=f"family_checklist_{get_today_key()}.csv"
-                )
-                
-                if success:
-                    st.success(message)
-                else:
-                    st.error(message)
+        # Auto-refresh check
+        st.markdown("### 🔄 Daily Reset")
+        if st.button("🔄 Check for New Day"):
             reset_count = 0
             for person in PEOPLE:
                 if should_reset_checklist(person):
